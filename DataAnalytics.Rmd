@@ -17,7 +17,6 @@ output:
     fig_height: 8
     fig_caption: true
     df_print: kable
-    fontsize: 12pt
 ---
 
 ```{r global-options, include=FALSE}

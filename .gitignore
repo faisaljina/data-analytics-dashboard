@@ -27,3 +27,4 @@ vignettes/*.pdf
 # R Environment Variables
 .Renviron
 UK-HPI-full-file-2020-11.csv
+rsconnect

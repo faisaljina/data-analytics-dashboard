@@ -1,0 +1,154 @@
+---
+title: "HPI Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(readr)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(plotly)
+hpi <- read.csv("https://github.com/faisaljina/data-analytics-dashboard/raw/main/UK-HPI-full-file-2020-11ed.csv")
+```
+
+```{r}
+hpi$Date <- as.Date(hpi$Date, format = "%d/%m/%Y")
+maxDate <- max(hpi$Date)
+df <- hpi %>%
+  select(1:4,8,10) %>%
+  filter(Date > (maxDate - years(10)))
+regions <- c('Wales','Scotland','England','Great Britain')
+dfReg <- filter(df, RegionName %in% regions) %>%
+  select(-AreaCode,-SalesVolume)
+dfReg$RegionName <- factor(dfReg$RegionName, levels = regions)
+dfReg <- rename(dfReg, '%12m.Change' = 4)
+
+lineTheme <- theme_minimal() + theme(legend.position="top")
+
+regionPlot <- ggplot(dfReg, aes(x = Date, y = AveragePrice, col = RegionName)) + 
+  geom_line(size = 1.5) + lineTheme +
+  labs(x = "Date", y="Average House Price (GBP)", title="Average House Prices Over Time", col = "Region: ")
+
+dfGB <- dfReg %>%
+  filter(RegionName == 'Great Britain')
+
+regression <- ggplot(dfGB, aes(x = Date, y = AveragePrice)) +
+  geom_smooth(method='lm', col = "cadetblue3", se=FALSE, size = 1.5) +
+  geom_line(size = 2, col = "darkorchid2") + lineTheme +
+  labs(x = "Date", y="Average House Price (GBP)", title="Average House Price in Great Britain with Trendline")
+
+
+boxAes <- aes(x = RegionName, y = `%12m.Change`, fill = RegionName)
+boxTheme <- theme_classic() + theme(legend.position="none")
+
+boxPlot <- ggplot(dfReg, boxAes) + geom_boxplot() + boxTheme + 
+  labs(x = "Region", y="12-Monthly %age Change", title="12-Monthly %age Change in Average House Price")
+
+
+
+dfWE4 <- dfReg %>%
+  filter(Date > (maxDate - years(4))) %>%
+  filter(RegionName %in% c('Wales', 'England')) %>%
+  select(1:3)
+min4Date <- min(dfWE4$Date)
+# Find Wales index starting price
+WalInd0 <- as.numeric(
+  dfWE4 %>%
+  filter(RegionName == 'Wales') %>%
+  filter(Date == min4Date) %>%
+  select(AveragePrice)
+)
+# Find England index starting price
+EngInd0 <- as.numeric(
+  dfWE4 %>%
+  filter(RegionName == 'England') %>%
+  filter(Date == min4Date) %>%
+  select(AveragePrice)
+)
+# Create England index
+dfE4 <- dfWE4 %>%
+  filter(RegionName == 'England') %>%
+  mutate(Index = 100 * AveragePrice/EngInd0)
+# Create Wales index
+dfW4 <- dfWE4 %>%
+  filter(RegionName == 'Wales') %>%
+  mutate(Index = 100 * AveragePrice/WalInd0)
+# Reform the data, now with index
+dfWE4 <-rbind(dfE4,dfW4)
+
+indexPlot <- ggplot(dfWE4, aes(x = Date, y=Index, col = RegionName)) +
+  geom_line(size = 2) + lineTheme +
+  labs(x = "Date", y="Average House Price (Indexed)", title="Indexed Average House Prices in England and Wales", col = "Region: ")
+
+```
+
+
+
+Long-term Trend
+==================
+
+### Great Britain Regression
+
+```{r}
+ggplotly(regression)
+```
+
+
+
+
+
+Regional Variation
+==================
+```{r}
+selection <- reactive({
+  data <- brushedPoints(dfReg, input$reg_brush)
+  if (nrow(data) == 0)
+    data <- dfReg
+  data
+})
+
+```
+
+
+Row
+------------------
+### Regional Graph
+```{r}
+lineTheme <- theme_minimal(base_size = 14) + theme(legend.position="top")
+
+plotOutput("reg", brush = brushOpts(id = "reg_brush"))
+output$reg <- renderPlot({
+  ggplot(dfReg, aes(x = Date, y = AveragePrice, col = RegionName)) + 
+  geom_line(size = 1.5) + lineTheme + 
+  labs(x = "Date", y="Average House Price (GBP)", title="Average House Prices Over Time", col = "Region: ")
+})
+```
+
+
+Row
+------------------
+### Regional Boxplots
+
+```{r}
+boxTheme <- theme_classic(base_size = 14) + theme(legend.position="none")
+renderPlot({
+  ggplot(selection(), boxAes) + geom_boxplot() + boxTheme + 
+    labs(x = "Region", y="12-Monthly %age Change", title="12-Monthly %age Change in Average House Price")
+})
+```
+
+
+
+Wales vs England
+==================
+### Indexed Graph
+
+```{r}
+ggplotly(indexPlot)
+```

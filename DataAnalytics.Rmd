@@ -1,0 +1,260 @@
+---
+title: "Data Analytics and Dashboarding"
+subtitle: "Stat testing, visualisation and dashboarding"
+author: "Faisal Jina"
+date: "22 February 2021"
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    fig_width: 12
+    fig_height: 8
+    fig_caption: true
+    df_print: kable
+    fontsize: 12pt
+---
+
+```{r global-options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, fig.show = TRUE)
+```
+
+\newpage
+# Dashboard
+
+The dashboard to accompany this report can be found at: https://faisaljina.shinyapps.io/dataanalyticsdashboard/
+
+# Background
+
+This project will examine the trends of the housing market in Britain. The dataset used will be the most recent iteration of the UK House Price Index data. This dataset is released monthly as a CSV file, available from the gov.uk website.
+This is read in to R and the structure examined.
+
+
+# Exploratory Analysis
+
+```{r}
+library(readr)
+library(lubridate)
+library(dplyr)
+hpi <- read.csv("UK-HPI-full-file-2020-11.csv")
+glimpse(hpi)
+```
+*Fig. 1 - Full Dataset structure*  
+  
+Figure 1 shows the data that is recorded on house prices across the UK. This is evidently a large dataset that will need reducing for the purpose of a pragmatic analysis. Looking at the head and tail of this data, it can be seen that a new data row is available each month for each region, with data running from 1968 to 2020.
+
+\newpage
+# Aims of Analysis
+This report will look at the current trends in house prices of the 3 countries of Great Britain. A 10-year period is selected to allow for establishing an idea of longer-term trends, which can be further filtered as required for short-term trends. Columns of interest selected include Average Price and Region data, as well as the 12-month Percentage Change column. This will help with like-for-like comparison between regions.
+  
+```{r}
+hpi$Date <- as.Date(hpi$Date, format = "%d/%m/%Y")
+maxDate <- max(hpi$Date)
+df <- hpi %>%
+  select(1:4,8,10) %>%
+  filter(Date > (maxDate - years(10)))
+head(df)
+```
+*Fig. 2 - First rows of data*  
+\
+  
+```{r}
+tail(df)
+```
+*Fig. 3 - Last rows of data*  
+  
+  
+Checking the head and tail of the filtered data, it now appears to be uniform with a manageable and relevant structure from which to continue the analysis.
+As the focus is on the 3 countries of Great Britain, these 3 regions as well as Great Britain are extracted from the the data. This leaves us with a dataset of 480 rows x 4 columns.
+```{r}
+regions <- c('Wales','Scotland','England','Great Britain')
+dfReg <- filter(df, RegionName %in% regions) %>%
+  select(-AreaCode,-SalesVolume)
+dfReg$RegionName <- factor(dfReg$RegionName, levels = regions)
+dfReg <- rename(dfReg, '%12m.Change' = 4)
+glimpse(dfReg)
+```
+*Fig. 4 - Glimpse of the filtered data*  
+  
+To observe the changes in house prices over time, it is useful to view this data diagrammatically.  
+
+```{r}
+library(ggplot2)
+
+lineTheme <- theme_minimal() + theme(legend.position="top")
+
+ggplot(dfReg, aes(x = Date, y = AveragePrice, col = RegionName)) + 
+  geom_line(size = 2) + lineTheme +
+  labs(x = "Date", y="Average House Price (£)", title="Average House Prices Over Time", col = "Region: ")
+```
+*Fig. 5 - Regional House Price Graph*  
+  
+Figure 5 gives an idea of what the data looks like in each region of interest. In particular, it shows that the 3 countries largely follow the general trend shown by Great Britain. This is examined in more detail in section 5.
+\newpage
+
+# Long-term Trend
+
+For long-term modelling, it is useful for businesses to know the general trend of the national housing market to inform pricing forecasts where real estate is involved. Whilst the average national house price appears to be largely linear with respect to time, a simple linear regression between these variables can help to determine if a linear model does indeed represent house prices well over the long-term.
+
+## Linear Regression Hypotheses
+**Null hypothesis**: There is not a linear relationship between the average house price and time  
+**Alternative hypothesis**: There is a linear relationship between the average house price and time
+
+```{r}
+dfGB <- dfReg %>%
+  filter(RegionName == 'Great Britain')
+
+lmGB <- lm(AveragePrice~Date, data = dfGB)
+summary(lmGB)
+```
+*Fig. 6 - Simple Linear Model*  
+
+## Results
+The linear regression model and coefficients were all significant at the 95% level (p < 0.05). The null hypothesis is therefore rejected and the alternative hypothesis accepted, and this confirms with a high degree of confidence that a linear relationship exists between the average house price and time. The adjusted R-squared value shows that 96% of the variance in the average house price is captured by this simple linear model based on this data, which is a very high result.
+
+## Outcome
+Based on this linear trend, one could reasonably assume persistence of this trend for forecasting purposes. Whilst there is volatility around this trendline, this is a long-term trend with a high R-squared, so there is high degree of confidence in extrapolating this going forward.  
+A company using forecasting models on house prices would typically make HPI calculations at least every quarter, so it is suggested that this trendline should be recalculated at the same time to look for changes over time, and update forecasting models as appropriate.
+The linear model is displayed in the graph below (also available in the dashboard).  
+  
+```{r}
+ggplot(dfGB, aes(x = Date, y = AveragePrice)) +
+  geom_smooth(method='lm', col = "cadetblue3", se=FALSE, size = 1.5) +
+  geom_line(size = 2, col = "darkorchid2") + lineTheme +
+  labs(x = "Date", y="Average House Price (£)", title="Average House Price in Great Britain with Trendline")
+```
+*Fig. 7 - Graph of British House Price Trend*  
+\newpage
+
+# Regional Variation
+Whilst house prices in Great Britain were linear over the longer term, the regional graph shows that the 3 countries may exhibit slightly different trends in the shorter term, particularly more recently. Boxplots are plotted to help identify any trend deviations in the 12-monthly price changes.  
+  
+```{r}
+boxAes <- aes(x = RegionName, y = `%12m.Change`, fill = RegionName)
+boxTheme <- theme_classic() + theme(legend.position="none")
+
+ggplot(dfReg, boxAes) + geom_boxplot() + boxTheme + 
+  labs(x = "Region", y="12-Monthly %age Change", title="12-Monthly %age Change in Average House Price (10 years)")
+
+#dfReg %>%
+#  filter(Date > (maxDate - years(5))) %>%
+#  ggplot(boxAes) + geom_boxplot() + boxTheme +
+#  labs(x = "Region", y="12-Monthly %age Change", title="12-Monthly %age Change in Average House Price (5 years)")
+```
+*Fig. 8 - Regional Boxplots of Average House Price - 10 Year*  
+\
+  
+```{r}
+dfReg %>%
+  filter(Date > (maxDate - years(2))) %>%
+  ggplot(boxAes) + geom_boxplot() + boxTheme + 
+  labs(x = "Region", y="12-Monthly %age Change", title="12-Monthly %age Change in Average House Price (2 years)")
+```
+*Fig. 9 - Regional Boxplots of Average House Price - 2 Year*  
+  
+As evidenced by the long-term regional graph (Fig.5) and 10-year boxplot (Fig. 8), all 3 countries appear to show a similar pattern of average house price change over the long term, with England and Great Britain appearing to be most similar. However, from the boxplots it is evident that as the time period is narrowed to a more recent subset e.g. the past 2 years (Fig. 9), it appears that Wales increasingly stands out as potentially having greater average house price changes than the other regions. (Boxplots also available on dashboard - select a region of the graph to see the corresponding boxplots).  
+It may be useful to examine Wales and England to determine if the difference observed is significant - if so, these markets may need to be treated differently in financial modelling.
+
+## Short-term Trend
+As the housing stock in Wales and England may be different, these regions are treated as independent groups. A 3-year subset of the 12-month changes is taken for these regions - this ensures the period is small enough to be relevant, but large enough to have enough data to draw reasonably reliable conclusions.
+
+## Normality Test
+Firstly, a Shapiro-Wilk test is made to see if the differences between these groups is normal, to determine the testing going forward.  
+\
+**Null hypothesis**: The distribution is normally distributed.  
+**Alternative hypothesis**: The distribution is not normally distributed.
+```{r}
+dfWE3 <- dfReg %>%
+  filter(Date > (maxDate - years(3))) %>%
+  filter(RegionName %in% c('Wales', 'England'))
+
+Wal3 <- dfWE3 %>%
+  filter(RegionName == 'Wales') %>%
+  select(`%12m.Change`)
+Eng3 <- dfWE3 %>%
+  filter(RegionName == 'England') %>%
+  select(`%12m.Change`)
+diff <- Wal3 - Eng3
+shapiro.test(diff$`%12m.Change`)
+```
+*Fig. 10 - Test of Normality on 'Wales minus England' data*  
+  
+The Shapiro-Wilk p-value >> 0.05, so the null hypothesis is accepted, which indicates that the distribution of the difference between these groups is not significantly different from the normal. We therefore assume normality, and a two sample t-test can be run.
+
+## T-test
+The two-sample t-test examines the difference in means of the 12-monthly percentage change of average house prices between Wales and England. This is run as unpaired, as these groups are assumed to be independent, and a Welch test is used as the variance in these groups may be different.  
+\
+**Null hypothesis**: There is no difference between the means of the two groups.  
+**Alternative hypothesis**: There is a difference between the means of the two groups.
+
+```{r}
+t.test(Wal3,Eng3,paired = FALSE, var.equal = FALSE)
+```
+*Fig. 11 - Two-sample Unpaired t-test*  
+  
+The t-test p-value << 0.05, indicating that we should reject the null hypothesis and accept the alternative hypothesis - that the difference in means between these groups is significant at the 95% level. The mean of the Wales group was also calculated as being higher than the England group.
+
+## Outcome
+The result of the t-test informs us that over the past 3 years, the average 12-month percentage change in Wales has been greater than that in England. Whilst this was not apparent in the Average House Price graph, this may be due to the absolute difference in house price between the regions. This disparity can be resolved by indexing these regions both to an arbitrary value of 100 at a point 4 years ago (4 years chosen as previous tests were on a 3 year sample using a 12-month price change).
+  
+### Indexed House Prices - Wales vs England
+
+```{r}
+
+dfWE4 <- dfReg %>%
+  filter(Date > (maxDate - years(4))) %>%
+  filter(RegionName %in% c('Wales', 'England')) %>%
+  select(1:3)
+min4Date <- min(dfWE4$Date)
+# Find Wales index starting price
+WalInd0 <- as.numeric(
+  dfWE4 %>%
+  filter(RegionName == 'Wales') %>%
+  filter(Date == min4Date) %>%
+  select(AveragePrice)
+)
+# Find England index starting price
+EngInd0 <- as.numeric(
+  dfWE4 %>%
+  filter(RegionName == 'England') %>%
+  filter(Date == min4Date) %>%
+  select(AveragePrice)
+)
+# Create England index
+dfE4 <- dfWE4 %>%
+  filter(RegionName == 'England') %>%
+  mutate(Index = 100 * AveragePrice/EngInd0)
+# Create Wales index
+dfW4 <- dfWE4 %>%
+  filter(RegionName == 'Wales') %>%
+  mutate(Index = 100 * AveragePrice/WalInd0)
+# Reform the data, now with index
+dfWE4 <-rbind(dfE4,dfW4)
+
+ggplot(dfWE4, aes(x = Date, y=Index, col = RegionName)) +
+  geom_line(size = 2) + lineTheme +
+  labs(x = "Date", y="Average House Price (Indexed)", title="Indexed Average House Prices in England and Wales", col = "Region: ")
+```
+*Fig. 12 - Graph of Indexed House Prices - Wales and England*
+  
+Figure 12 (also available on dashboard) shows that Wales' average house prices have indeed risen faster (in percentage terms) than those in England over this time period, and the tests show that this difference was significant.  
+
+The effect of this finding for businesses is that shorter-term growth in these 2 markets can not each be assumed to be uniform across Britain. The differences between the markets of Wales and England may need to be modelled separately, which in turn will impact forecasts and risk profiles of any assets/liabilities linked to real estate in these regions. Again, this finding should be monitored over time to see if the discrepancy between these regions persists into the future. The skewing of the housing market in this way may present an opportunity for businesses to take advantage of increased demand in Wales with the view of a greater increase in property values over time relative to England.
+
+\newpage
+
+# References  
+1. 'flexdashboard: Easy interactive dashboards for R'. Flexdashboard. Available at: https://rmarkdown.rstudio.com/flexdashboard/. Accessed: 20 Feb 2021.
+2. 'ggplot2 Brushing'. JJ Allaire. Available at: https://jjallaire.shinyapps.io/shiny-ggplot2-brushing/. Accessed: 21 Feb 2021.
+3. 'ggplot2 Quick Reference: colour (and fill)'. Sape Research Group. Available at: http://sape.inf.usi.ch/quick-reference/ggplot2/colour. Accessed: 18 Feb 2021.
+4. 'Markdown Basics'. RStudio. Available at: https://rmarkdown.rstudio.com/authoring_basics.html. Accessed: 22 Feb 2021
+5. 'Paired vs Unpaired T-Test: Differences, Assumptions and Hypotheses'. Nicole Gleichmann. 14 Feb 2020. Available at: https://www.technologynetworks.com/informatics/articles/paired-vs-unpaired-t-test-differences-assumptions-and-hypotheses-330826. Accessed: 17 Feb 2021.
+6. 'Smoothed conditional means'. ggplot2. Available at: https://ggplot2.tidyverse.org/reference/geom_smooth.html. Accessed: 16 Feb 2021.
+7. 'Statistical tools for high-throughput data analysis'. STHDA. Available at: http://www.sthda.com/english/wiki/unpaired-two-samples-t-test-in-r. Accessed: 16 Feb 2021.
+8. 'Themes'. ggplot2. Available at: https://ggplot2-book.org/polishing.html. Accessed: 16 Feb 2021.
+9. 'UK House Price Index: data downloads November 2020’. Gov.uk. 20 Jan 2021. Available at: https://www.gov.uk/government/statistical-data-sets/uk-house-price-index-datadownloads-november-2020. Accessed: 15 Feb 2021.
